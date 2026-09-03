@@ -94,9 +94,11 @@ table.rtbl input[type=text],table.rtbl input[type=number]{width:100%;}
     <tr><td class="lbl">Amex Delta</td><td><input id="in_sc4_stmt" type="number"></td><td><input id="in_sc4_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_sc4_cur" type="number"></td></tr>
     <tr><td class="lbl">Chase Marriot(미화)</td><td><input id="in_sc5_stmt" type="number"></td><td><input id="in_sc5_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_sc5_cur" type="number"></td></tr>
     <tr><td class="lbl">Citi 코스코</td><td><input id="in_sc6_stmt" type="number"></td><td><input id="in_sc6_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_sc6_cur" type="number"></td></tr>
-    <tr><td class="grp-hd" colspan="4" style="font-size:10px;color:#bbb;padding-top:8px;">장기 (Current만)</td></tr>
-    <tr><td class="lbl">Slate Edge</td><td></td><td></td><td><input id="in_lt1_cur" type="number"></td></tr>
-    <tr><td class="lbl">BOA</td><td></td><td></td><td><input id="in_lt2_cur" type="number"></td></tr>
+    <tr><td class="grp-hd" colspan="4" style="font-size:10px;color:#bbb;padding-top:8px;">장기 (Current + Min.Payment)</td></tr>
+    <tr><th style="font-size:10px;">장기카드</th><th style="font-size:10px;">Min.Payment</th><th style="font-size:10px;">일</th><th style="font-size:10px;">Current</th></tr>
+    <tr><td class="lbl">Slate Edge</td><td><input id="in_lt1_min" type="number"></td><td><input id="in_lt1_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_lt1_cur" type="number"></td></tr>
+    <tr><td class="lbl">BOA</td><td><input id="in_lt2_min" type="number"></td><td><input id="in_lt2_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_lt2_cur" type="number"></td></tr>
+    <tr><td class="lbl">Citi</td><td><input id="in_lt3_min" type="number"></td><td><input id="in_lt3_day" type="number" min="1" max="28" style="width:40px;"></td><td><input id="in_lt3_cur" type="number"></td></tr>
   </table>
   <div class="note">Statement Balance는 매달 위 "일"에 Checking에서 반복 출금되는 것으로 추정됩니다.</div>
 </div>
@@ -158,9 +160,13 @@ table.rtbl input[type=text],table.rtbl input[type=number]{width:100%;}
   </table>
 </details>
 
-<details class="fcard card" style="margin-bottom:14px;">
+<details class="fcard card" style="margin-bottom:14px;" open>
   <summary><span>날짜별 출금 일정 (정기출금 + 단기카드)</span><i>▸</i></summary>
-  <table class="rtbl" style="margin-top:10px;table-layout:fixed;">
+  <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;">
+    <button onclick="refreshScheduleToday()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid #6c3483;background:#fff;color:#6c3483;cursor:pointer;">📅 오늘 날짜 기준 재계산</button>
+    <button id="btn_next_month" onclick="toggleNextMonth()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid #1a5fa8;background:#fff;color:#1a5fa8;cursor:pointer;">다음달 예상 보기</button>
+  </div>
+  <table class="rtbl" style="margin-top:6px;table-layout:fixed;">
     <colgroup><col style="width:55px;"><col><col style="width:90px;"><col style="width:90px;"><col style="width:110px;"></colgroup>
     <thead><tr><th>날짜</th><th>항목</th><th>입출금</th><th>잔액</th><th>구분</th></tr></thead>
     <tbody id="schedule_body"></tbody>
@@ -252,6 +258,9 @@ function getPassKey(){
 const TODAY=new Date();
 const MONTHS=24;
 const SHORT_CARDS=['sc1','sc2','sc3','sc4','sc5','sc6'];
+const LONG_CARDS=['lt1','lt2','lt3'];
+const LONG_CARD_NAMES={lt1:'Slate Edge',lt2:'BOA',lt3:'Citi'};
+const LONG_CARD_DAY_DEFAULTS={lt1:25,lt2:20,lt3:15};
 
 let incomeItems=[], outflowItems=[], lumps=[], krwIncomeItems=[], krwOutflowItems=[], saveSchedule=[];
 let chartChecking=null, chartSavings=null;
@@ -305,6 +314,7 @@ function findShortfallDate(segStart, segEnd, minTarget){
     incomeItems.forEach(r=>{ if(itemAppliesOn(r,mo,day)) chk += (parseFloat(r.amt)||0); });
     outflowItems.forEach(r=>{ if(r.account!=='krw' && itemAppliesOn(r,mo,day)) chk -= (parseFloat(r.amt)||0); });
     SHORT_CARDS.forEach(c=>{ if(day===v('in_'+c+'_day')) chk -= v('in_'+c+'_stmt'); });
+    LONG_CARDS.forEach(c=>{ if(day===v('in_'+c+'_day')) chk -= v('in_'+c+'_min'); });
     if(day===saveDay) chk -= getMonthlySave(d);
     if(d>=segStart && chk<minTarget) return new Date(d);
     d.setDate(d.getDate()+1);
@@ -373,6 +383,7 @@ async function loadFromSheet(){
     });
     document.getElementById('in_lt1_cur').value=sheetData['SlateEdge_Cur']||0;
     document.getElementById('in_lt2_cur').value=sheetData['BOA_Cur']||0;
+    document.getElementById('in_lt3_cur').value=sheetData['Citi_Cur']||0;
 
     if(sheetData._config){
       try{
@@ -426,7 +437,8 @@ async function saveToSheet(){
   const body={
     Checking:v('in_checking'), Savings:v('in_savings'), 'KRW통장':v('in_krw'), MonthlySave:v('in_monthlysave'),
     '식비':v('in_food'), '의류비':v('in_clothing'), '잡화':v('in_misc'), '경조사비':v('in_events'),
-    'SlateEdge_Cur':v('in_lt1_cur'), 'BOA_Cur':v('in_lt2_cur')
+    'SlateEdge_Cur':v('in_lt1_cur'), 'BOA_Cur':v('in_lt2_cur'), 'Citi_Cur':v('in_lt3_cur'),
+    'SlateEdge_Min':v('in_lt1_min'), 'BOA_Min':v('in_lt2_min'), 'Citi_Min':v('in_lt3_min')
   };
   SHORT_CARDS.forEach(c=>{
     body[map[c]+'_Stmt']=v('in_'+c+'_stmt');
@@ -690,7 +702,7 @@ function recalc(){
   const saveDay=1;
 
   const shortCardCur = SHORT_CARDS.reduce((s,c)=>s+v('in_'+c+'_cur'),0);
-  const longCardTotal = v('in_lt1_cur')+v('in_lt2_cur');
+  const longCardTotal = v('in_lt1_cur')+v('in_lt2_cur')+v('in_lt3_cur');
 
   document.getElementById('m_checking').textContent=fmtUSD(startChecking);
   document.getElementById('m_savings').textContent=fmtUSD(startSavings);
@@ -736,6 +748,7 @@ function recalc(){
     incomeItems.forEach(r=>{ if(itemAppliesOn(r,mo,day)) checking += (parseFloat(r.amt)||0); });
     outflowItems.forEach(r=>{ if(r.account!=='krw' && itemAppliesOn(r,mo,day)) checking -= (parseFloat(r.amt)||0); });
     SHORT_CARDS.forEach(c=>{ if(day===v('in_'+c+'_day')) checking -= v('in_'+c+'_stmt'); });
+    LONG_CARDS.forEach(c=>{ if(day===v('in_'+c+'_day')) checking -= v('in_'+c+'_min'); });
 
     const mSave=getMonthlySave(d);
     if(day===saveDay){ checking -= mSave; savings += mSave; savD+=mSave; savDwithDebt+=mSave; }
@@ -835,81 +848,93 @@ function recalc(){
 }
 
 function renderSchedule(){
+  const now = new Date();
   const cardNames={sc1:'Chase Marriot(종복)',sc2:'Chase Prime(종복)',sc3:'Bilt',sc4:'Amex Delta',sc5:'Chase Marriot(미화)',sc6:'Citi 코스코'};
-  const mo=TODAY.getMonth()+1;
-  const todayDay=TODAY.getDate();
-  function dueThisMonth(r){
-    const mode=r.monthMode || (r.freq==='M'?'ex':'on');
-    if(r.freq==='M'){
-      if(mode==='ex' && r.exclude){
-        const ex=r.exclude.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
-        return !ex.includes(mo);
+
+  function buildRows(mo, nextMonthMode){
+    function dueInMonth(r, m){
+      const mode=r.monthMode || (r.freq==='M'?'ex':'on');
+      if(r.freq==='M'){
+        if(mode==='ex' && r.exclude){
+          const ex=r.exclude.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+          return !ex.includes(m);
+        }
+        return true;
       }
-      return true;
+      const months=(r.months||'').split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+      return months.includes(m);
     }
-    const months=(r.months||'').split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
-    return months.includes(mo);
+    const rows=[];
+    incomeItems.filter(r=>dueInMonth(r,mo)).forEach(r=>{
+      rows.push({day:r.day, name:r.name, amt:r.amt, sign:1, type:'입금', account:'checking'});
+    });
+    outflowItems.filter(r=>dueInMonth(r,mo)).forEach(r=>{
+      rows.push({day:r.day, name:r.name, amt:r.amt, sign:-1, type:r.freq==='M'?'매달':(r.freq==='Q'?'분기':'연1회'), account:r.account||'checking'});
+    });
+    if(nextMonthMode){
+      // next month: short cards use (current-stmt) as estimated stmt, long cards use min payment
+      SHORT_CARDS.forEach(c=>{
+        const est=Math.max(0,(v('in_'+c+'_cur')||0)-(v('in_'+c+'_stmt')||0));
+        rows.push({day:v('in_'+c+'_day'), name:cardNames[c]+' (카드, 추정)', amt:est, sign:-1, type:'추정', account:'checking'});
+      });
+      LONG_CARDS.forEach(c=>{
+        if(v('in_'+c+'_min')) rows.push({day:v('in_'+c+'_day'), name:LONG_CARD_NAMES[c]+' (장기Min)', amt:v('in_'+c+'_min'), sign:-1, type:'장기', account:'checking'});
+      });
+    } else {
+      SHORT_CARDS.forEach(c=>{
+        rows.push({day:v('in_'+c+'_day'), name:cardNames[c]+' (카드)', amt:v('in_'+c+'_stmt'), sign:-1, type:'매달', account:'checking'});
+      });
+      LONG_CARDS.forEach(c=>{
+        if(v('in_'+c+'_min')) rows.push({day:v('in_'+c+'_day'), name:LONG_CARD_NAMES[c]+' (장기Min)', amt:v('in_'+c+'_min'), sign:-1, type:'장기', account:'checking'});
+      });
+    }
+    const d=nextMonthMode ? new Date(now.getFullYear(), now.getMonth()+1, 1) : now;
+    rows.push({day:1, name:'Savings 적립', amt:getMonthlySave(d), sign:-1, type:'매달', account:'checking'});
+    rows.sort((a,b)=>a.day-b.day);
+    return rows;
   }
-  function dateStr(day){ return (mo)+'/'+day; }
 
-  const rows=[];
-  incomeItems.filter(dueThisMonth).forEach(r=>{
-    rows.push({day:r.day, name:r.name, amt:r.amt, sign:1, type:'입금', account:'checking'});
-  });
-  outflowItems.filter(dueThisMonth).forEach(r=>{
-    rows.push({day:r.day, name:r.name, amt:r.amt, sign:-1, type:r.freq==='M'?'매달':(r.freq==='Q'?'분기':'연1회'), account:r.account||'checking'});
-  });
-  SHORT_CARDS.forEach(c=>{
-    rows.push({day:v('in_'+c+'_day'), name:cardNames[c]+' (카드)', amt:v('in_'+c+'_stmt'), sign:-1, type:'매달', account:'checking'});
-  });
-  rows.push({day:1, name:'Savings 적립', amt:getMonthlySave(TODAY), sign:-1, type:'매달', account:'checking'});
-  rows.sort((a,b)=>a.day-b.day);
-
-  const past = rows.filter(r=>r.day < todayDay);
-  const upcoming = rows.filter(r=>r.day >= todayDay);
+  function rowHtml(r, bal, dateStr){
+    const sign=r.sign>0?'+':'-';
+    const color=r.sign>0?'#2a7d4f':'#c0392b';
+    if(r.account==='krw'){
+      return `<tr><td style="text-align:center;font-weight:600;">${dateStr(r.day)}</td><td>${r.name} (한국통장)</td><td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td><td style="text-align:right;color:#ccc;">—</td><td style="color:#aaa;font-size:11px;">${r.type}</td></tr>`;
+    }
+    bal.val += r.sign*(parseFloat(r.amt)||0);
+    return `<tr><td style="text-align:center;font-weight:600;">${dateStr(r.day)}</td><td>${r.name}</td><td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td><td style="text-align:right;font-weight:600;${bal.val<0?'color:#c0392b;':''}">${fmtUSD(bal.val)}</td><td style="color:#aaa;font-size:11px;">${r.type}</td></tr>`;
+  }
 
   let html='';
+
+  // 이번달 항상 렌더
+  const mo=now.getMonth()+1;
+  const todayDay=now.getDate();
+  const dateStr=day=>`${mo}/${day}`;
+  const rows=buildRows(mo, false);
+  const past=rows.filter(r=>r.day<todayDay);
+  const upcoming=rows.filter(r=>r.day>=todayDay);
   if(past.length){
-    html += `<tr style="background:#f8f8f4;"><td colspan="5" style="font-size:11px;color:#aaa;">이번 달 지난 항목 (참고용, 잔액 미반영)</td></tr>`;
-    html += past.map(r=>{
-      const sign = r.sign>0?'+':'-';
-      const color = r.sign>0?'#2a7d4f':'#c0392b';
-      const krwTag = r.account==='krw' ? ' (한국통장)' : '';
-      return `<tr style="color:#bbb;">
-        <td style="text-align:center;">${dateStr(r.day)}</td>
-        <td>${r.name}${krwTag}</td>
-        <td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td>
-        <td></td>
-        <td style="font-size:11px;">${r.type}</td>
-      </tr>`;
+    html+=`<tr style="background:#f8f8f4;"><td colspan="5" style="font-size:11px;color:#aaa;">이번 달 지난 항목 (참고용, 잔액 미반영)</td></tr>`;
+    html+=past.map(r=>{
+      const sign=r.sign>0?'+':'-'; const color=r.sign>0?'#2a7d4f':'#c0392b';
+      return `<tr style="color:#bbb;"><td style="text-align:center;">${dateStr(r.day)}</td><td>${r.name}</td><td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td><td></td><td style="font-size:11px;">${r.type}</td></tr>`;
     }).join('');
   }
+  const bal={val:v('in_checking')};
+  html+=`<tr style="background:#f8f8f4;"><td style="text-align:center;font-weight:700;">오늘 ${dateStr(todayDay)}</td><td colspan="2">현재 Checking</td><td style="text-align:right;font-weight:700;">${fmtUSD(bal.val)}</td><td></td></tr>`;
+  html+=upcoming.map(r=>rowHtml(r,bal,dateStr)).join('');
+  html+=`<tr style="background:#f8f8f4;"><td style="text-align:center;">월말</td><td colspan="2">예상 Checking</td><td style="text-align:right;font-weight:700;${bal.val<0?'color:#c0392b;':''}">${fmtUSD(bal.val)}</td><td></td></tr>`;
 
-  let bal=v('in_checking');
-  html += `<tr style="background:#f8f8f4;"><td style="text-align:center;font-weight:700;">오늘 ${dateStr(todayDay)}</td><td colspan="2">현재 Checking</td><td style="text-align:right;font-weight:700;">${fmtUSD(bal)}</td><td></td></tr>`;
-  html += upcoming.map(r=>{
-    const krwTag = r.account==='krw' ? ' (한국통장)' : '';
-    const sign = r.sign>0?'+':'-';
-    const color = r.sign>0?'#2a7d4f':'#c0392b';
-    if(r.account==='krw'){
-      return `<tr>
-        <td style="text-align:center;font-weight:600;">${dateStr(r.day)}</td>
-        <td>${r.name}${krwTag}</td>
-        <td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td>
-        <td style="text-align:right;color:#ccc;">—</td>
-        <td style="color:#aaa;font-size:11px;">${r.type}</td>
-      </tr>`;
-    }
-    bal += r.sign*(parseFloat(r.amt)||0);
-    return `<tr>
-      <td style="text-align:center;font-weight:600;">${dateStr(r.day)}</td>
-      <td>${r.name}</td>
-      <td style="text-align:right;color:${color};">${sign}${fmtUSD(Math.abs(r.amt))}</td>
-      <td style="text-align:right;font-weight:600;${bal<0?'color:#c0392b;':''}">${fmtUSD(bal)}</td>
-      <td style="color:#aaa;font-size:11px;">${r.type}</td>
-    </tr>`;
-  }).join('');
-  html += `<tr style="background:#f8f8f4;"><td style="text-align:center;">월말</td><td colspan="2">예상 Checking</td><td style="text-align:right;font-weight:700;${bal<0?'color:#c0392b;':''}">${fmtUSD(bal)}</td><td></td></tr>`;
+  // 다음달 버튼 눌렸으면 아래에 이어서 붙임
+  if(showNextMonth){
+    const nmo=(now.getMonth()+2)>12?1:(now.getMonth()+2);
+    const nDateStr=day=>`${nmo}/${day}`;
+    const nRows=buildRows(nmo,true);
+    const nBal={val:bal.val};
+    html+=`<tr style="background:#eff6ff;"><td colspan="5" style="font-size:11px;color:#1a5fa8;font-weight:600;">── ${nmo}월 예상 (카드: Current−Statement 추정, 장기: Min.Payment) ──</td></tr>`;
+    html+=nRows.map(r=>rowHtml(r,nBal,nDateStr)).join('');
+    html+=`<tr style="background:#dbeafe;"><td style="text-align:center;">${nmo}월말</td><td colspan="2">예상 Checking</td><td style="text-align:right;font-weight:700;${nBal.val<0?'color:#c0392b;':''}">${fmtUSD(nBal.val)}</td><td></td></tr>`;
+  }
 
   document.getElementById('schedule_body').innerHTML = html;
 }
@@ -935,6 +960,16 @@ function goalCalcRaw(which){
 }
 
 let showCardDebt=false;
+let showNextMonth=false;
+function refreshScheduleToday(){ renderSchedule(); }
+function toggleNextMonth(){
+  showNextMonth=!showNextMonth;
+  const btn=document.getElementById('btn_next_month');
+  btn.style.background=showNextMonth?'#1a5fa8':'#fff';
+  btn.style.color=showNextMonth?'#fff':'#1a5fa8';
+  btn.textContent=showNextMonth?'이번달 보기':'다음달 예상 보기';
+  renderSchedule();
+}
 function toggleCardDebt(){ showCardDebt=!showCardDebt; if(chartSavings){chartSavings.destroy();chartSavings=null;} recalc(); }
 function drawChart(canvasId, labels, data, color, data2, color2){
   const fmt=v=>'$'+Math.round(v).toLocaleString('en-US');
@@ -964,7 +999,9 @@ function drawChart(canvasId, labels, data, color, data2, color2){
 // ===== local config (recurring items, lumps, goals) =====
 const CARD_DAY_DEFAULTS={sc1:16,sc2:11,sc3:8,sc4:23,sc5:26,sc6:7};
 const FIELDS=['short_mode','short_item','short_date','long_mode','long_item','long_date','fx_usdkrw','fx_nzdkrw','min_checking_target',
-...SHORT_CARDS.map(c=>'in_'+c+'_day')];
+...SHORT_CARDS.map(c=>'in_'+c+'_day'),
+...LONG_CARDS.flatMap(c=>['in_'+c+'_day'])
+];
 function saveLocal(){
   const data={};
   FIELDS.forEach(id=>{const el=document.getElementById(id); if(el) data[id]=el.value;});
@@ -1006,6 +1043,7 @@ function initDefaultKRW(){
 }
 function initCardDays(){
   SHORT_CARDS.forEach(c=>{ document.getElementById('in_'+c+'_day').value=CARD_DAY_DEFAULTS[c]; });
+  LONG_CARDS.forEach(c=>{ document.getElementById('in_'+c+'_day').value=LONG_CARD_DAY_DEFAULTS[c]; });
 }
 
 function initDefaultIncome(){
@@ -1066,12 +1104,16 @@ loadFromSheet();
 
 // input listeners
 ['in_checking','in_savings','in_krw','in_monthlysave','in_food','in_clothing','in_misc','in_events',
- 'in_lt1_cur','in_lt2_cur',
- ...SHORT_CARDS.flatMap(c=>['in_'+c+'_stmt','in_'+c+'_cur'])
+ 'in_lt1_cur','in_lt2_cur','in_lt3_cur',
+ ...SHORT_CARDS.flatMap(c=>['in_'+c+'_stmt','in_'+c+'_cur']),
+ ...LONG_CARDS.flatMap(c=>['in_'+c+'_min','in_'+c+'_cur'])
 ].forEach(id=>{
   document.getElementById(id).addEventListener('input',()=>{ syncMonthlyToOutflow(); recalc(); renderKRW(); });
 });
 SHORT_CARDS.forEach(c=>{
+  document.getElementById('in_'+c+'_day').addEventListener('input',()=>{ recalc(); saveLocal(); });
+});
+LONG_CARDS.forEach(c=>{
   document.getElementById('in_'+c+'_day').addEventListener('input',()=>{ recalc(); saveLocal(); });
 });
 ['short_mode','short_item','short_date','long_mode','long_item','long_date','fx_usdkrw','fx_nzdkrw','min_checking_target'].forEach(id=>{
