@@ -384,6 +384,12 @@ async function loadFromSheet(){
     document.getElementById('in_lt1_cur').value=sheetData['SlateEdge_Cur']||0;
     document.getElementById('in_lt2_cur').value=sheetData['BOA_Cur']||0;
     document.getElementById('in_lt3_cur').value=sheetData['Citi_Cur']||0;
+    document.getElementById('in_lt1_min').value=sheetData['SlateEdge_Min']||0;
+    document.getElementById('in_lt2_min').value=sheetData['BOA_Min']||0;
+    document.getElementById('in_lt3_min').value=sheetData['Citi_Min']||0;
+    document.getElementById('in_lt1_day').value=sheetData['SlateEdge_Day']||LONG_CARD_DAY_DEFAULTS.lt1;
+    document.getElementById('in_lt2_day').value=sheetData['BOA_Day']||LONG_CARD_DAY_DEFAULTS.lt2;
+    document.getElementById('in_lt3_day').value=sheetData['Citi_Day']||LONG_CARD_DAY_DEFAULTS.lt3;
 
     if(sheetData._config){
       try{
@@ -438,7 +444,8 @@ async function saveToSheet(){
     Checking:v('in_checking'), Savings:v('in_savings'), 'KRW통장':v('in_krw'), MonthlySave:v('in_monthlysave'),
     '식비':v('in_food'), '의류비':v('in_clothing'), '잡화':v('in_misc'), '경조사비':v('in_events'),
     'SlateEdge_Cur':v('in_lt1_cur'), 'BOA_Cur':v('in_lt2_cur'), 'Citi_Cur':v('in_lt3_cur'),
-    'SlateEdge_Min':v('in_lt1_min'), 'BOA_Min':v('in_lt2_min'), 'Citi_Min':v('in_lt3_min')
+    'SlateEdge_Min':v('in_lt1_min'), 'BOA_Min':v('in_lt2_min'), 'Citi_Min':v('in_lt3_min'),
+    'SlateEdge_Day':v('in_lt1_day'), 'BOA_Day':v('in_lt2_day'), 'Citi_Day':v('in_lt3_day')
   };
   SHORT_CARDS.forEach(c=>{
     body[map[c]+'_Stmt']=v('in_'+c+'_stmt');
